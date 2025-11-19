@@ -32,4 +32,6 @@ void app_main(void)
     mqtt_start();
     pwm_init();
     xTaskCreate(pwm_task, "pwm_task", 2048, NULL, 5, NULL);
+    xTaskCreate(mqtt_SendTAndHR, "SendTAndHR", 2048, NULL, 5, NULL);
+
 }
