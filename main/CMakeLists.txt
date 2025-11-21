@@ -1,2 +1,2 @@
-idf_component_register(SRCS "mqtt_ctrl.c" "pwm.c" "main.c"
+idf_component_register(SRCS "periph_Handle.c" "mqtt_ctrl.c" "pwm.c" "main.c"
                     INCLUDE_DIRS ".")

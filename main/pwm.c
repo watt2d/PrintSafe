@@ -37,10 +37,21 @@ void pwm_init(void)
 
 void pwm_task(void *arg)
 {
-    while (1) {
+    while (1) { 
         duty = (duty + 150 <= duty_max) ? duty + 150 : 0;
         ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty);
         ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
         vTaskDelay(pdMS_TO_TICKS(500));
     }
+}
+void update_pwm(uint8_t value)
+{
+    if (value > 100) value = 100;
+
+    uint32_t scaled = ((uint32_t)value * duty_max) / 100;
+
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, scaled);
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+
+    duty = scaled;
 }
