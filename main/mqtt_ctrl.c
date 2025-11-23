@@ -3,7 +3,6 @@
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "Inc/periph_Handle.h"
-#include "Inc/pwm.h"
 static const char *TAG = "MQTT";
 
 /* Handle MQTT partagé par tout le module */
@@ -52,23 +51,19 @@ static void handler(void *args, esp_event_base_t base, int32_t id, void *data)
             memset(data_str, 0, sizeof(data_str));
             memcpy(data_str, ev->data, ev->data_len);
 
-            if (topic_eq(ev, "/PrintSafe/Mode")) {
-                printf("Mode=%s\n", data_str);
-                system_data.mode = (uint8_t)atoi(data_str);
-            }else if (topic_eq(ev, "/PrintSafe/Manual/DesiredTemp")) {
-                printf("DesiredTemp=%s\n", data_str);
-                system_data.manual.desired_temperature = (uint8_t)atoi(data_str);
-            }else if (topic_eq(ev, "/PrintSafe/Manual/DesiredFan")) {
-                system_data.manual.desired_fan   = (uint8_t)atoi(data_str);
-                printf("FAN SPEED=%s\n", data_str);
-                update_pwm(system_data.manual.desired_fan);
-            }else if (topic_eq(ev, "/PrintSafe/Automatic/DesiredTemp")){
-                system_data.automatic.desired_fan   = (uint8_t)atoi(data_str);
-            }else if (topic_eq(ev, "/PrintSafe/Automatic/DesiredFan")){
-                system_data.automatic.desired_fan   = (uint8_t)atoi(data_str);
-            }else if (topic_eq(ev, "/PrintSafe/Automatic/DesiredTime")){
-                system_data.automatic.desired_fan   = (uint8_t)atoi(data_str);
-            }
+        if (topic_eq(ev, "/PrintSafe/Mode")) {
+            system_data.mode = atoi(data_str);
+            system_logic();
+        }else if (topic_eq(ev, "/PrintSafe/Cmd/Temperature")) {
+            system_data.cmd.temperature = atoi(data_str);
+            if (system_data.mode == 0) system_logic();
+        }else if (topic_eq(ev, "/PrintSafe/Cmd/Fan")) {
+            system_data.cmd.fan = atoi(data_str);
+            if (system_data.mode == 0) system_logic();
+        }else if (topic_eq(ev, "/PrintSafe/Cmd/Time")) {
+            system_data.cmd.time_s = atoi(data_str);
+        }
+
 
             break;
         }
@@ -113,10 +108,7 @@ void mqtt_start(void)
 
     mqtt_client = esp_mqtt_client_init(&cfg);
 
-    esp_mqtt_client_register_event(mqtt_client,
-                                   ESP_EVENT_ANY_ID,
-                                   handler,
-                                   NULL);
+    esp_mqtt_client_register_event(mqtt_client,ESP_EVENT_ANY_ID,handler,NULL);
 
     esp_mqtt_client_start(mqtt_client);
 }
