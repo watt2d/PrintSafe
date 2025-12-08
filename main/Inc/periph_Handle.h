@@ -2,6 +2,7 @@
 #define AUTOMATIC_HANDLE_H
 
 #include <stdint.h>
+#include <esp_err.h>
 
 typedef struct {
 
@@ -21,5 +22,7 @@ typedef struct {
 
 extern data_struct system_data;
 extern void system_logic(void);
+void i2c_init(void);
+esp_err_t sht41_measure(float *t, float *h);
 
 #endif

@@ -1,5 +1,6 @@
 #include "Inc/pwm.h"
 #include "Inc/mqtt_ctrl.h"
+#include "Inc/periph_Handle.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
@@ -31,6 +32,7 @@ void app_main(void)
 
     mqtt_start();
     pwm_init();
+    i2c_init();
     //xTaskCreate(pwm_task, "pwm_task", 2048, NULL, 5, NULL);
     xTaskCreate(mqtt_SendTAndHR, "SendTAndHR", 2048, NULL, 5, NULL);
 
