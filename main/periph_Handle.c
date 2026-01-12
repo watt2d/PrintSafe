@@ -1,6 +1,6 @@
 /**
  * @file system_logic.c
- * @brief Gestion des modes MANUAL / AUTOMATIC et pilotage du chauffage + ventilateur.
+ * @brief Gestion GPIO (I2C, PWM)
  */
 
 #include "Inc/periph_Handle.h"
@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
+#include "esp_log.h"
 
 #define HEATER_GPIO    GPIO_NUM_25     /**< GPIO de commande chauffage */
 #define TEMP_OFFSET_P  5               /**< Décalage +5% sur consigne température */
@@ -20,6 +21,7 @@
 #define SHT41_ADDR      0x44
 
 static TaskHandle_t temp_task_handle = NULL;
+static TaskHandle_t auto_task_handle = NULL;
 
 /**
  * @brief Structure système globale contenant état, commandes et mesures.
@@ -47,10 +49,7 @@ static void set_target_temperature(void *arg)
     gpio_set_direction(HEATER_GPIO, GPIO_MODE_OUTPUT);
 
     while (1) {
-
-        uint8_t t = 100;   /* Placeholder en attendant lecture capteur */
-
-        if (t < threshold)
+        if (system_data.temperature < threshold)
             gpio_set_level(HEATER_GPIO, 1);
         else
             gpio_set_level(HEATER_GPIO, 0);
@@ -59,29 +58,35 @@ static void set_target_temperature(void *arg)
     }
 }
 
-/**
- * @brief Démarrage/arrêt de la tâche de régulation du chauffage.
- *
- * @param start  true : lance la tâche ; false : la stoppe.
- * @param temp   Température de consigne à passer à la tâche.
- */
-static void control_temp_task(bool start, uint8_t temp)
+/* -------------------------------------------------------------------------- */
+/*                         TÂCHE MODE AUTOMATIQUE                              */
+/* -------------------------------------------------------------------------- */
+
+static void automatic_mode_task(void *arg)
 {
-    if (temp_task_handle != NULL) {
-        vTaskDelete(temp_task_handle);
-        temp_task_handle = NULL;
+    uint8_t target = system_data.cmd.temperature;
+    uint32_t duration_ms = system_data.cmd.time_s * 1000;
+    uint32_t elapsed = 0;
+
+    uint8_t threshold = target + (target * TEMP_OFFSET_P) / 100;
+
+    gpio_set_direction(HEATER_GPIO, GPIO_MODE_OUTPUT);
+
+    while (elapsed < duration_ms) {
+        if (system_data.temperature < threshold)
+            gpio_set_level(HEATER_GPIO, 1);
+        else
+            gpio_set_level(HEATER_GPIO, 0);
+
+        vTaskDelay(pdMS_TO_TICKS(TEMP_DELAY_MS));
+        elapsed += TEMP_DELAY_MS;
     }
 
-    if (start) {
-        xTaskCreate(
-            set_target_temperature,
-            "temp_ctrl",
-            4096,
-            (void*)(uintptr_t)temp,
-            5,
-            &temp_task_handle
-        );
-    }
+    /* Fin du temps → arrêt chauffage */
+    gpio_set_level(HEATER_GPIO, 0);
+
+    auto_task_handle = NULL;
+    vTaskDelete(NULL);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -97,16 +102,22 @@ static void control_temp_task(bool start, uint8_t temp)
  */
 void system_logic(void)
 {
-    if (system_data.mode == 0) {         /* MANUAL */
-        control_temp_task(true, system_data.cmd.temperature);
-        update_pwm(system_data.cmd.fan);
-        return;
+    if (temp_task_handle != NULL) {
+        vTaskDelete(temp_task_handle);
+        temp_task_handle = NULL;
     }
-
-    if (system_data.mode == 1) {         /* AUTOMATIC */
-        control_temp_task(false, 0);
-        /* TODO : implémentation du mode automatique */
+    if (system_data.mode == MANUAL) {         /* MANUAL */
+        //control_temp_task(MANUAL, system_data.cmd.temperature);
+        printf("MANUAL\n");
+        xTaskCreate(set_target_temperature,"temp_ctrl",4096,(void*)(uintptr_t)system_data.cmd.temperature,5,&temp_task_handle);
         return;
+    }else if (system_data.mode == AUTOMATIC) {
+    printf("AUTOMATIC\n");
+    xTaskCreate(automatic_mode_task,"auto_ctrl",4096,NULL,5,&auto_task_handle);
+    return;
+    }else if (system_data.mode == STOP){
+        printf("STOP\n");
+        update_pwm(0);
     }
 }
 /**
@@ -132,19 +143,38 @@ void i2c_init(void)
 
 esp_err_t sht41_measure(float *t, float *h)
 {
-    uint8_t cmd[2] = {0xFD, 0x00};      // High precision measurement (SHT41 uses 0xFD only; second byte ignored)
-    ESP_ERROR_CHECK(i2c_master_write_to_device(I2C_PORT, SHT41_ADDR, cmd, 1, 20 / portTICK_PERIOD_MS));
-    vTaskDelay(pdMS_TO_TICKS(10));
+    esp_err_t err;
+    uint8_t cmd = 0xFD;   // High precision measurement
+
+    err = i2c_master_write_to_device(
+        I2C_PORT,
+        SHT41_ADDR,
+        &cmd,
+        1,
+        pdMS_TO_TICKS(50)
+    );
+    if (err != ESP_OK) return err;
+
+    // Datasheet-safe delay
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     uint8_t data[6] = {0};
-    ESP_ERROR_CHECK(i2c_master_read_from_device(I2C_PORT, SHT41_ADDR, data, 6, 20 / portTICK_PERIOD_MS));
+    err = i2c_master_read_from_device(
+        I2C_PORT,
+        SHT41_ADDR,
+        data,
+        6,
+        pdMS_TO_TICKS(50)
+    );
+    if (err != ESP_OK) return err;
 
     uint16_t rawT = (data[0] << 8) | data[1];
     uint16_t rawH = (data[3] << 8) | data[4];
 
-    *t = -45 + 175 * ((float)rawT / 65535.0f);
-    *h = 100 * ((float)rawH / 65535.0f);
+    *t = -45.0f + 175.0f * ((float)rawT / 65535.0f);
+    *h = 100.0f * ((float)rawH / 65535.0f);
 
     return ESP_OK;
 }
+
 

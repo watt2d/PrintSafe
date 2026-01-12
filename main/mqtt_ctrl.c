@@ -9,6 +9,8 @@
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "Inc/periph_Handle.h"
+#include "Inc/pwm.h"
+#include "driver/gpio.h"
 
 static const char *TAG = "MQTT";
 
@@ -62,10 +64,11 @@ static void handler(void *args, esp_event_base_t base, int32_t id, void *data)
         case MQTT_EVENT_CONNECTED: {
 
             esp_mqtt_client_subscribe(c, "/PrintSafe/Mode", 0);
-            esp_mqtt_client_subscribe(c, "/PrintSafe/Manual/DesiredTemp", 0);
-            esp_mqtt_client_subscribe(c, "/PrintSafe/Manual/DesiredFan", 0);
-            esp_mqtt_client_subscribe(c, "/PrintSafe/Automatic/DesiredTemp", 0);
-            esp_mqtt_client_subscribe(c, "/PrintSafe/Automatic/DesiredFan", 0);
+            esp_mqtt_client_subscribe(c, "/PrintSafe/Cmd/Temperature", 0);
+            esp_mqtt_client_subscribe(c, "/PrintSafe/Cmd/Fan", 0);
+            esp_mqtt_client_subscribe(c, "/PrintSafe/Cmd/Time", 0);
+            esp_mqtt_client_subscribe(c, "/PrintSafe/Cmd/ResOn", 0);
+
 
             uint8_t mac[6];
             esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -86,19 +89,34 @@ static void handler(void *args, esp_event_base_t base, int32_t id, void *data)
             memcpy(data_str, ev->data, ev->data_len);
 
             if (topic_eq(ev, "/PrintSafe/Mode")) {
-                system_data.mode = atoi(data_str);
+                printf("\n");
+                if(atoi(data_str) == 0){
+                    system_data.mode = MANUAL;   
+                }else if (atoi(data_str) == 1){
+                    system_data.mode = AUTOMATIC;
+                }else if (atoi(data_str) == 2){
+                    system_data.mode = STOP;
+                }else{
+                    printf("invalid\n");
+                }
                 system_logic();
-
+                esp_mqtt_client_publish(c, "/PrintSafe/Mode/Ack", "4", 0, 1, 0);
             } else if (topic_eq(ev, "/PrintSafe/Cmd/Temperature")) {
                 system_data.cmd.temperature = atoi(data_str);
-                if (system_data.mode == 0) system_logic();
-
             } else if (topic_eq(ev, "/PrintSafe/Cmd/Fan")) {
                 system_data.cmd.fan = atoi(data_str);
-                if (system_data.mode == 0) system_logic();
-
+                update_pwm(system_data.cmd.fan);
             } else if (topic_eq(ev, "/PrintSafe/Cmd/Time")) {
                 system_data.cmd.time_s = atoi(data_str);
+            }else if (topic_eq(ev, "/PrintSafe/Cmd/ResOn")) {
+                printf("\n");
+                if(atoi(data_str) == 0){
+                    gpio_set_level(GPIO_NUM_26, 0);
+                    printf("OFF\n");
+                }else if (atoi(data_str) == 1){
+                    gpio_set_level(GPIO_NUM_26, 1);
+                    printf("ON\n");
+                }
             }
 
             break;

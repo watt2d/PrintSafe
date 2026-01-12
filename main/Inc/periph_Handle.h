@@ -4,13 +4,19 @@
 #include <stdint.h>
 #include <esp_err.h>
 
+enum mode{
+    AUTOMATIC,
+    MANUAL,
+    STOP
+};
+
 typedef struct {
 
     /* État + mesures */
     uint8_t temperature;
     uint8_t hr;
     uint8_t fan_speed;
-    uint8_t mode;
+    enum mode mode;
     struct {
         uint8_t temperature;
         uint8_t fan;
@@ -18,6 +24,8 @@ typedef struct {
     } cmd;
 
 } data_struct;
+
+
 
 
 extern data_struct system_data;
