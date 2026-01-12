@@ -105,7 +105,8 @@ static void handler(void *args, esp_event_base_t base, int32_t id, void *data)
                 system_data.cmd.temperature = atoi(data_str);
             } else if (topic_eq(ev, "/PrintSafe/Cmd/Fan")) {
                 system_data.cmd.fan = atoi(data_str);
-                update_pwm(system_data.cmd.fan);
+                update_pwm_Fan(system_data.cmd.fan);
+                update_pwm_Res(system_data.cmd.fan);
             } else if (topic_eq(ev, "/PrintSafe/Cmd/Time")) {
                 system_data.cmd.time_s = atoi(data_str);
             }else if (topic_eq(ev, "/PrintSafe/Cmd/ResOn")) {

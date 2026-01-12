@@ -2,56 +2,68 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define LEDC_TIMER LEDC_TIMER_0
-#define LEDC_MODE LEDC_LOW_SPEED_MODE
-#define LEDC_OUTPUT_IO 5
-#define LEDC_CHANNEL LEDC_CHANNEL_0
-#define LEDC_DUTY_RES LEDC_TIMER_13_BIT
-#define LEDC_FREQ 4000
+/* Timer commun */
+#define LEDC_TIMER       LEDC_TIMER_0
+#define LEDC_MODE        LEDC_LOW_SPEED_MODE
+#define LEDC_DUTY_RES    LEDC_TIMER_13_BIT
+#define LEDC_FREQ        4000
 
-static uint32_t duty = 0;
+/* PWM 1 */
+#define PWM1_GPIO        5
+#define PWM1_CHANNEL     LEDC_CHANNEL_0
+
+/* PWM 2 */
+#define PWM2_GPIO        18
+#define PWM2_CHANNEL     LEDC_CHANNEL_1
+
 static const uint32_t duty_max = (1 << LEDC_DUTY_RES) - 1;
 
+/* ---------- INIT ---------- */
 void pwm_init(void)
 {
-    ledc_timer_config_t t = {
-        .speed_mode = LEDC_MODE,
-        .duty_resolution = LEDC_DUTY_RES,
-        .timer_num = LEDC_TIMER,
-        .freq_hz = LEDC_FREQ,
-        .clk_cfg = LEDC_AUTO_CLK
+    ledc_timer_config_t timer = {
+        .speed_mode       = LEDC_MODE,
+        .duty_resolution  = LEDC_DUTY_RES,
+        .timer_num        = LEDC_TIMER,
+        .freq_hz          = LEDC_FREQ,
+        .clk_cfg          = LEDC_AUTO_CLK
     };
-    ledc_timer_config(&t);
+    ledc_timer_config(&timer);
 
-    ledc_channel_config_t c = {
+    ledc_channel_config_t ch0 = {
         .speed_mode = LEDC_MODE,
-        .channel = LEDC_CHANNEL,
-        .timer_sel = LEDC_TIMER,
-        .intr_type = LEDC_INTR_DISABLE,
-        .gpio_num = LEDC_OUTPUT_IO,
-        .duty = 0,
-        .hpoint = 0
+        .channel    = PWM1_CHANNEL,
+        .timer_sel  = LEDC_TIMER,
+        .gpio_num   = PWM1_GPIO,
+        .duty       = 0,
+        .hpoint     = 0
     };
-    ledc_channel_config(&c);
+    ledc_channel_config(&ch0);
+
+    ledc_channel_config_t ch1 = {
+        .speed_mode = LEDC_MODE,
+        .channel    = PWM2_CHANNEL,
+        .timer_sel  = LEDC_TIMER,
+        .gpio_num   = PWM2_GPIO,
+        .duty       = 0,
+        .hpoint     = 0
+    };
+    ledc_channel_config(&ch1);
+}
+static inline void pwm_set(uint8_t percent, ledc_channel_t ch)
+{
+    if (percent > 100) percent = 100;
+    uint32_t duty = (percent * duty_max) / 100;
+    ledc_set_duty(LEDC_MODE, ch, duty);
+    ledc_update_duty(LEDC_MODE, ch);
 }
 
-void pwm_task(void *arg)
+void update_pwm_Fan(uint8_t value)
 {
-    while (1) { 
-        duty = (duty + 150 <= duty_max) ? duty + 150 : 0;
-        ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty);
-        ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
+    pwm_set(value, PWM1_CHANNEL);
 }
-void update_pwm(uint8_t value)
+
+void update_pwm_Res(uint8_t value)
 {
-    if (value > 100) value = 100;
-
-    uint32_t scaled = ((uint32_t)value * duty_max) / 100;
-
-    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, scaled);
-    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-
-    duty = scaled;
+    pwm_set(value, PWM2_CHANNEL);
 }
